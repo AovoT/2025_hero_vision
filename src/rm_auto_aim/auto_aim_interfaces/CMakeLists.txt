@@ -15,11 +15,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Armors.msg"
   "msg/Target.msg"
 
+
   "msg/DebugLight.msg"
   "msg/DebugLights.msg"
   "msg/DebugArmor.msg"
   "msg/DebugArmors.msg"
   "msg/TrackerInfo.msg"
+  "msg/DetectColor.msg"
 
   DEPENDENCIES
     std_msgs

@@ -1,7 +1,6 @@
-# ros folder
 build/
 install/
 log/
-
-# vscode file
+.cache/
+MvFGSdkLog/
 *.vscode/

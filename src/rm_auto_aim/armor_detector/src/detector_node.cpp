@@ -8,8 +8,10 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <image_transport/image_transport.hpp>
+#include <image_transport/transport_hints.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
+#include <rcl_interfaces/msg/detail/set_parameters_result__struct.hpp>
 #include <rclcpp/duration.hpp>
 #include <rclcpp/qos.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -29,54 +31,19 @@ namespace rm_auto_aim
 ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
 : Node("armor_detector", options)
 {
-  RCLCPP_INFO(this->get_logger(), "Starting DetectorNode!");
+  RCLCPP_INFO(get_logger(), "Starting ArmorDetectorNode...");
 
   // Detector
   detector_ = initDetector();
+  RCLCPP_INFO(get_logger(), "Detector initialized.");
 
   // Armors Publisher
   armors_pub_ = this->create_publisher<auto_aim_interfaces::msg::Armors>(
     "/detector/armors", rclcpp::SensorDataQoS());
+  RCLCPP_INFO(get_logger(), "Armors publisher created.");
 
   // Visualization Marker Publisher
   // See http://wiki.ros.org/rviz/DisplayTypes/Marker
-  armor_marker_.ns = "armors";
-  armor_marker_.action = visualization_msgs::msg::Marker::ADD;
-  armor_marker_.type = visualization_msgs::msg::Marker::CUBE;
-  armor_marker_.scale.x = 0.05;
-  armor_marker_.scale.z = 0.125;
-  armor_marker_.color.a = 1.0;
-  armor_marker_.color.g = 0.5;
-  armor_marker_.color.b = 1.0;
-  armor_marker_.lifetime = rclcpp::Duration::from_seconds(0.1);
-
-  text_marker_.ns = "classification";
-  text_marker_.action = visualization_msgs::msg::Marker::ADD;
-  text_marker_.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-  text_marker_.scale.z = 0.1;
-  text_marker_.color.a = 1.0;
-  text_marker_.color.r = 1.0;
-  text_marker_.color.g = 1.0;
-  text_marker_.color.b = 1.0;
-  text_marker_.lifetime = rclcpp::Duration::from_seconds(0.1);
-
-  marker_pub_ =
-    this->create_publisher<visualization_msgs::msg::MarkerArray>("/detector/marker", 10);
-
-  // Debug Publishers
-  debug_ = this->declare_parameter("debug", false);
-  if (debug_) {
-    createDebugPublishers();
-  }
-
-  // Debug param change moniter
-  debug_param_sub_ = std::make_shared<rclcpp::ParameterEventHandler>(this);
-  debug_cb_handle_ =
-    debug_param_sub_->add_parameter_callback("debug", [this](const rclcpp::Parameter & p) {
-      debug_ = p.as_bool();
-      debug_ ? createDebugPublishers() : destroyDebugPublishers();
-    });
-
   cam_info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
     "/camera_info", rclcpp::SensorDataQoS(),
     [this](sensor_msgs::msg::CameraInfo::ConstSharedPtr camera_info) {
@@ -85,22 +52,78 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
       pnp_solver_ = std::make_unique<PnPSolver>(camera_info->k, camera_info->d);
       cam_info_sub_.reset();
     });
+  RCLCPP_INFO(get_logger(), "Camera info subscription created.");
+  img_sub_ = image_transport::create_subscription(
+    this, "/image_raw", std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1),
+    "raw");
+  RCLCPP_INFO(get_logger(), "img subscription created.");
+  param_cb_handle_ = this->add_on_set_parameters_callback(
+    std::bind(&ArmorDetectorNode::paramCallback, this, std::placeholders::_1));
+  RCLCPP_INFO(get_logger(), "Param callback function set up.");
+  
+  if (debug_) {
+    dbg_pubs_ = std::make_unique<DebugPublishers>(this);
+    RCLCPP_INFO(get_logger(), "Debug publisher created.");
+  }
+}
 
-  img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-    "/image_raw", rclcpp::SensorDataQoS(),
-    std::bind(&ArmorDetectorNode::imageCallback, this, std::placeholders::_1));
+rcl_interfaces::msg::SetParametersResult ArmorDetectorNode::paramCallback(
+  const std::vector<rclcpp::Parameter> & params)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  result.reason = "success";
+  auto & d = *detector_;
+  auto & l = detector_->l;
+  auto & a = detector_->a;
+  for (const auto & p : params) {
+    const auto & name = p.get_name();
+    try {
+      if (name == "binary_thres") {
+        d.binary_thres = p.as_int();
+      } else if (name == "detect_color") {
+        d.detect_color = p.as_int();
+      } else if (name == "light.min_ratio") {
+        l.min_ratio = p.as_double();
+      } else if (name == "light.max_ratio") {
+        l.max_ratio = p.as_double();
+      } else if (name == "light.max_angle") {
+        l.max_angle = p.as_double();
+      } else if (name == "armor.min_light_ratio") {
+        a.min_light_ratio = p.as_double();
+      } else if (name == "armor.min_small_center_distance") {
+        a.min_small_center_distance = p.as_double();
+      } else if (name == "armor.max_small_center_distance") {
+        a.max_small_center_distance = p.as_double();
+      } else if (name == "armor.min_large_center_distance") {
+        a.min_large_center_distance = p.as_double();
+      } else if (name == "armor.max_large_center_distance") {
+        a.max_large_center_distance = p.as_double();
+      } else if (name == "armor.max_angle") {
+        a.max_angle = p.as_double();
+      } else if (name == "classifier_threshold") {
+        d.classifier->threshold = p.as_double();
+      } else if (name == "debug") {
+        debug_ = p.as_bool();
+      }
+      else {
+        continue;
+      }
+    } catch (const std::exception & e) {
+      result.successful = false;
+      result.reason = std::string("Parameter update failed: ") + e.what();
+      return result;
+    }
+  }
+  return result;
 }
 
 void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg)
 {
   auto armors = detectArmors(img_msg);
-
   if (pnp_solver_ != nullptr) {
-    armors_msg_.header = armor_marker_.header = text_marker_.header = img_msg->header;
+    armors_msg_.header = img_msg->header;
     armors_msg_.armors.clear();
-    marker_array_.markers.clear();
-    armor_marker_.id = 0;
-    text_marker_.id = 0;
 
     auto_aim_interfaces::msg::Armor armor_msg;
     for (const auto & armor : armors) {
@@ -131,51 +154,39 @@ void ArmorDetectorNode::imageCallback(const sensor_msgs::msg::Image::ConstShared
 
         // Fill the distance to image center
         armor_msg.distance_to_image_center = pnp_solver_->calculateDistanceToCenter(armor.center);
-
-        // Fill the markers
-        armor_marker_.id++;
-        armor_marker_.scale.y = armor.type == ArmorType::SMALL ? 0.135 : 0.23;
-        armor_marker_.pose = armor_msg.pose;
-        text_marker_.id++;
-        text_marker_.pose.position = armor_msg.pose.position;
-        text_marker_.pose.position.y -= 0.1;
-        text_marker_.text = armor.classfication_result;
-        armors_msg_.armors.emplace_back(armor_msg);
-        marker_array_.markers.emplace_back(armor_marker_);
-        marker_array_.markers.emplace_back(text_marker_);
+        armors_msg_.armors.emplace_back(std::move(armor_msg));
       } else {
         RCLCPP_WARN(this->get_logger(), "PnP failed!");
       }
     }
 
     // Publishing detected armors
+    armors_msg_.header.stamp = this->now();
     armors_pub_->publish(armors_msg_);
-
-    // Publishing marker
-    publishMarkers();
   }
 }
 
 std::unique_ptr<Detector> ArmorDetectorNode::initDetector()
 {
-  rcl_interfaces::msg::ParameterDescriptor param_desc;
-  param_desc.integer_range.resize(1);
-  param_desc.integer_range[0].step = 1;
-  param_desc.integer_range[0].from_value = 0;
-  param_desc.integer_range[0].to_value = 255;
-  int binary_thres = declare_parameter("binary_thres", 160, param_desc);
+  std::unique_ptr<Detector> d;
+  rcl_interfaces::msg::ParameterDescriptor pd;
+  pd.integer_range.resize(1);
+  pd.integer_range[0].step = 1;
+  pd.integer_range[0].from_value = 0;
+  pd.integer_range[0].to_value = 255;
 
-  param_desc.description = "0-RED, 1-BLUE";
-  param_desc.integer_range[0].from_value = 0;
-  param_desc.integer_range[0].to_value = 1;
-  auto detect_color = declare_parameter("detect_color", RED, param_desc);
+  int binary_thres = declare_parameter("binary_thres", 160, pd);
 
-  Detector::LightParams l_params = {
+  pd.description = "0-RED, 1-BLUE";
+  pd.integer_range[0].to_value = 1;
+  auto detect_color = declare_parameter("detect_color", RED, pd);
+
+  Detector::LightParams l_params{
     .min_ratio = declare_parameter("light.min_ratio", 0.1),
     .max_ratio = declare_parameter("light.max_ratio", 0.4),
     .max_angle = declare_parameter("light.max_angle", 40.0)};
 
-  Detector::ArmorParams a_params = {
+  Detector::ArmorParams a_params{
     .min_light_ratio = declare_parameter("armor.min_light_ratio", 0.7),
     .min_small_center_distance = declare_parameter("armor.min_small_center_distance", 0.8),
     .max_small_center_distance = declare_parameter("armor.max_small_center_distance", 3.2),
@@ -183,31 +194,23 @@ std::unique_ptr<Detector> ArmorDetectorNode::initDetector()
     .max_large_center_distance = declare_parameter("armor.max_large_center_distance", 5.5),
     .max_angle = declare_parameter("armor.max_angle", 35.0)};
 
-  auto detector = std::make_unique<Detector>(binary_thres, detect_color, l_params, a_params);
+  std::string pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
+  std::string model_path = pkg_path + "/model/mlp.onnx";
+  std::string label_path = pkg_path + "/model/label.txt";
+  double threshold = declare_parameter("classifier_threshold", 0.7);
+  auto ignore_classes = declare_parameter("ignore_classes", std::vector<std::string>{"negative"});
 
-  // Init classifier
-  auto pkg_path = ament_index_cpp::get_package_share_directory("armor_detector");
-  auto model_path = pkg_path + "/model/mlp.onnx";
-  auto label_path = pkg_path + "/model/label.txt";
-  double threshold = this->declare_parameter("classifier_threshold", 0.7);
-  std::vector<std::string> ignore_classes =
-    this->declare_parameter("ignore_classes", std::vector<std::string>{"negative"});
-  detector->classifier =
+  d = std::make_unique<Detector>(binary_thres, detect_color, l_params, a_params);
+  d->classifier =
     std::make_unique<NumberClassifier>(model_path, label_path, threshold, ignore_classes);
-
-  return detector;
+  return d;
 }
 
 std::vector<Armor> ArmorDetectorNode::detectArmors(
   const sensor_msgs::msg::Image::ConstSharedPtr & img_msg)
 {
   // Convert ROS img to cv::Mat
-  auto img = cv_bridge::toCvShare(img_msg, "rgb8")->image;
-
-  // Update params
-  detector_->binary_thres = get_parameter("binary_thres").as_int();
-  detector_->detect_color = get_parameter("detect_color").as_int();
-  detector_->classifier->threshold = get_parameter("classifier_threshold").as_double();
+  auto img = cv_bridge::toCvShare(img_msg, "bgr8")->image;
 
   auto armors = detector_->detect(img);
 
@@ -217,7 +220,7 @@ std::vector<Armor> ArmorDetectorNode::detectArmors(
 
   // Publish debug info
   if (debug_) {
-    binary_img_pub_.publish(
+    dbg_pubs_->binary.publish(
       cv_bridge::CvImage(img_msg->header, "mono8", detector_->binary_img).toImageMsg());
 
     // Sort lights and armors data by x coordinate
@@ -228,12 +231,12 @@ std::vector<Armor> ArmorDetectorNode::detectArmors(
       detector_->debug_armors.data.begin(), detector_->debug_armors.data.end(),
       [](const auto & a1, const auto & a2) { return a1.center_x < a2.center_x; });
 
-    lights_data_pub_->publish(detector_->debug_lights);
-    armors_data_pub_->publish(detector_->debug_armors);
+    dbg_pubs_->debug_lights->publish(detector_->debug_lights);
+    dbg_pubs_->debug_armors->publish(detector_->debug_armors);
 
     if (!armors.empty()) {
       auto all_num_img = detector_->getAllNumbersImage();
-      number_img_pub_.publish(
+      dbg_pubs_->numbers.publish(
         *cv_bridge::CvImage(img_msg->header, "mono8", all_num_img).toImageMsg());
     }
 
@@ -246,40 +249,26 @@ std::vector<Armor> ArmorDetectorNode::detectArmors(
     auto latency_s = latency_ss.str();
     cv::putText(
       img, latency_s, cv::Point(10, 30), cv::FONT_HERSHEY_SIMPLEX, 1.0, cv::Scalar(0, 255, 0), 2);
-    result_img_pub_.publish(cv_bridge::CvImage(img_msg->header, "rgb8", img).toImageMsg());
+    dbg_pubs_->result.publish(cv_bridge::CvImage(img_msg->header, "bgr8", img).toImageMsg());
   }
 
   return armors;
 }
-
-void ArmorDetectorNode::createDebugPublishers()
+DebugPublishers::DebugPublishers(rclcpp::Node * node_ptr)
 {
-  lights_data_pub_ =
-    this->create_publisher<auto_aim_interfaces::msg::DebugLights>("/detector/debug_lights", 10);
-  armors_data_pub_ =
-    this->create_publisher<auto_aim_interfaces::msg::DebugArmors>("/detector/debug_armors", 10);
-
-  binary_img_pub_ = image_transport::create_publisher(this, "/detector/binary_img");
-  number_img_pub_ = image_transport::create_publisher(this, "/detector/number_img");
-  result_img_pub_ = image_transport::create_publisher(this, "/detector/result_img");
+  this->debug_lights =
+    node_ptr->create_publisher<auto_aim_interfaces::msg::DebugLights>("/detector/debug_lights", 10);
+  this->debug_armors =
+    node_ptr->create_publisher<auto_aim_interfaces::msg::DebugArmors>("/detector/debug_armors", 10);
+  this->binary = image_transport::create_publisher(node_ptr, "/detector/binary_img");
+  this->numbers = image_transport::create_publisher(node_ptr, "/detector/number_img");
+  this->result = image_transport::create_publisher(node_ptr, "/detector/result_img");
 }
-
-void ArmorDetectorNode::destroyDebugPublishers()
+DebugPublishers::~DebugPublishers()
 {
-  lights_data_pub_.reset();
-  armors_data_pub_.reset();
-
-  binary_img_pub_.shutdown();
-  number_img_pub_.shutdown();
-  result_img_pub_.shutdown();
-}
-
-void ArmorDetectorNode::publishMarkers()
-{
-  using Marker = visualization_msgs::msg::Marker;
-  armor_marker_.action = armors_msg_.armors.empty() ? Marker::DELETE : Marker::ADD;
-  marker_array_.markers.emplace_back(armor_marker_);
-  marker_pub_->publish(marker_array_);
+  binary.shutdown();
+  numbers.shutdown();
+  result.shutdown();
 }
 
 }  // namespace rm_auto_aim

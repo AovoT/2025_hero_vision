@@ -1,0 +1,17 @@
+/rm_serial_driver:
+  ros__parameters:
+    debug: false
+    left:
+      device_name: /dev/ttyACM_LEFT
+      baud_rate: 115200
+      hardware_flow: false
+      parity: false
+      stop_bits: 1
+      timeout_ms: 1000
+    right:
+      device_name: /dev/ttyACM_RIGHT
+      baud_rate: 115200
+      hardware_flow: false
+      parity: false
+      stop_bits: 1
+      timeout_ms: 1000

@@ -4,18 +4,20 @@
 #ifndef ARMOR_DETECTOR__ARMOR_HPP_
 #define ARMOR_DETECTOR__ARMOR_HPP_
 
+#include <image_transport/publisher.hpp>
 #include <opencv2/core.hpp>
 
 // STL
 #include <algorithm>
 #include <string>
+#include <iostream>
 
 namespace rm_auto_aim
 {
 const int RED = 0;
 const int BLUE = 1;
 
-enum class ArmorType { SMALL, LARGE, INVALID };
+enum ArmorType { SMALL = 0, LARGE = 1, INVALID = 2 };
 const std::string ARMOR_TYPE_STR[3] = {"small", "large", "invalid"};
 
 struct Light : public cv::RotatedRect
@@ -35,7 +37,6 @@ struct Light : public cv::RotatedRect
     tilt_angle = std::atan2(std::abs(top.x - bottom.x), std::abs(top.y - bottom.y));
     tilt_angle = tilt_angle / CV_PI * 180;
   }
-
   int color;
   cv::Point2f top, bottom;
   double length;
@@ -55,7 +56,6 @@ struct Armor
     }
     center = (left_light.center + right_light.center) / 2;
   }
-
   // Light pairs part
   Light left_light, right_light;
   cv::Point2f center;
@@ -66,6 +66,14 @@ struct Armor
   std::string number;
   float confidence;
   std::string classfication_result;
+
+public:
+  void printArmorPoint() const {
+    std::cout << " right_top: " << right_light.top, 
+    std::cout << " right_bottom: " << right_light.bottom, 
+    std::cout << " left_bottom: " << left_light.bottom, 
+    std::cout << " left_top: " << left_light.top << std::endl; 
+  }
 };
 
 }  // namespace rm_auto_aim

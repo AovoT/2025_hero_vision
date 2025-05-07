@@ -7,7 +7,11 @@
 // ROS
 #include <image_transport/image_transport.hpp>
 #include <image_transport/publisher.hpp>
+#include <image_transport/subscriber.hpp>
 #include <image_transport/subscriber_filter.hpp>
+#include <rcl_interfaces/msg/detail/set_parameters_result__struct.hpp>
+#include <rclcpp/node_interfaces/node_parameters_interface.hpp>
+#include <rclcpp/parameter.hpp>
 #include <rclcpp/publisher.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -23,9 +27,21 @@
 #include "armor_detector/number_classifier.hpp"
 #include "armor_detector/pnp_solver.hpp"
 #include "auto_aim_interfaces/msg/armors.hpp"
+#include "auto_aim_interfaces/msg/detect_color.hpp"
 
 namespace rm_auto_aim
 {
+class DebugPublishers
+{
+public:
+  DebugPublishers(rclcpp::Node * node);
+  ~DebugPublishers();
+  image_transport::Publisher binary;
+  image_transport::Publisher numbers;
+  image_transport::Publisher result;
+  rclcpp::Publisher<auto_aim_interfaces::msg::DebugLights>::SharedPtr debug_lights;
+  rclcpp::Publisher<auto_aim_interfaces::msg::DebugArmors>::SharedPtr debug_armors;
+};
 
 class ArmorDetectorNode : public rclcpp::Node
 {
@@ -34,14 +50,12 @@ public:
 
 private:
   void imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr img_msg);
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_handle_;
+  rcl_interfaces::msg::SetParametersResult paramCallback(
+    const std::vector<rclcpp::Parameter> & params);
 
   std::unique_ptr<Detector> initDetector();
   std::vector<Armor> detectArmors(const sensor_msgs::msg::Image::ConstSharedPtr & img_msg);
-
-  void createDebugPublishers();
-  void destroyDebugPublishers();
-
-  void publishMarkers();
 
   // Armor Detector
   std::unique_ptr<Detector> detector_;
@@ -50,12 +64,6 @@ private:
   auto_aim_interfaces::msg::Armors armors_msg_;
   rclcpp::Publisher<auto_aim_interfaces::msg::Armors>::SharedPtr armors_pub_;
 
-  // Visualization marker publisher
-  visualization_msgs::msg::Marker armor_marker_;
-  visualization_msgs::msg::Marker text_marker_;
-  visualization_msgs::msg::MarkerArray marker_array_;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
-
   // Camera info part
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr cam_info_sub_;
   cv::Point2f cam_center_;
@@ -63,17 +71,13 @@ private:
   std::unique_ptr<PnPSolver> pnp_solver_;
 
   // Image subscrpition
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr img_sub_;
+  image_transport::Subscriber img_sub_;
+
+  // Params
+  bool debug_;
 
   // Debug information
-  bool debug_;
-  std::shared_ptr<rclcpp::ParameterEventHandler> debug_param_sub_;
-  std::shared_ptr<rclcpp::ParameterCallbackHandle> debug_cb_handle_;
-  rclcpp::Publisher<auto_aim_interfaces::msg::DebugLights>::SharedPtr lights_data_pub_;
-  rclcpp::Publisher<auto_aim_interfaces::msg::DebugArmors>::SharedPtr armors_data_pub_;
-  image_transport::Publisher binary_img_pub_;
-  image_transport::Publisher number_img_pub_;
-  image_transport::Publisher result_img_pub_;
+  std::unique_ptr<DebugPublishers> dbg_pubs_;
 };
 
 }  // namespace rm_auto_aim

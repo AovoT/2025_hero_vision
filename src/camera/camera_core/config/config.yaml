@@ -1,0 +1,10 @@
+/camera_core:
+  ros__parameters:
+    camera:
+      name: "camera"
+      cam_info_url: "package://camera_core/config/right_cam_info.yaml"
+      exposure_time: 10000.0 # ms
+      gain: 5.0
+      invert: false
+      trigger_mode: false
+      rotate: 270

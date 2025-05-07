@@ -1,9 +1,10 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
 project(rm_serial_driver)
 
-## Use C++14
-set(CMAKE_CXX_STANDARD 14)
+## Use C++20
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 
 ## By adding -Wall and -Werror, the compiler does not ignore warnings anymore,
 ## enforcing cleaner code.
@@ -24,18 +25,13 @@ ament_auto_find_build_dependencies()
 ###########
 
 ament_auto_add_library(${PROJECT_NAME} SHARED
-  src/rm_serial_driver.cpp
-  src/crc.cpp
+  DIRECTORY src # 自动寻找src下所有源文件生成动态库
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
-  PLUGIN rm_serial_driver::RMSerialDriver
-  EXECUTABLE ${PROJECT_NAME}_node
+  PLUGIN rm_serial_driver::RMSerialDriver # 注册插件
+  EXECUTABLE ${PROJECT_NAME}_node # 生成可执行文件，以便单独调试节点
 )
-
-#############
-## Testing ##
-#############
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

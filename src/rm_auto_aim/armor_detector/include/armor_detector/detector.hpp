@@ -23,6 +23,7 @@ namespace rm_auto_aim
 class Detector
 {
 public:
+
   struct LightParams
   {
     // width / height

@@ -198,7 +198,6 @@ ArmorType Detector::isArmor(const Light & light_1, const Light & light_2)
   armor_data.center_distance = center_distance;
   armor_data.angle = angle;
   this->debug_armors.data.emplace_back(armor_data);
-
   return type;
 }
 
