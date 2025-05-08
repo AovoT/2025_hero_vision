@@ -31,6 +31,7 @@ public:
   double threshold;
 
 private:
+  cv::Mat applyCLAHE(const cv::Mat & src, double clip_limit = 3.0, cv::Size tile_size = {8, 8});
   cv::dnn::Net net_;
   std::vector<std::string> class_names_;
   std::vector<std::string> ignore_classes_;

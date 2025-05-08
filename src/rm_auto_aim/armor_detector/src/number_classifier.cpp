@@ -38,45 +38,47 @@ NumberClassifier::NumberClassifier(
   }
 }
 
-void NumberClassifier::extractNumbers(const cv::Mat & src, std::vector<Armor> & armors)
+void NumberClassifier::extractNumbers(const cv::Mat & src_bgr, std::vector<Armor> & armors)
 {
-  // Light length in image
-  const int light_length = 12;
-  // Image size after warp
-  const int warp_height = 28;
-  const int small_armor_width = 32;
-  const int large_armor_width = 54;
-  // Number ROI size
-  const cv::Size roi_size(20, 28);
+  static const int K_LIGHT_LEN = 12;
+  static const int K_WARP_H = 28;
+  static const int K_SMALL_W = 32;
+  static const int K_LARGE_W = 54;
+  static const cv::Size K_ROI_SIZE(20, 28);
+
+  /* ① 仅保留灰度通道 → 后面少一次色彩往返 */
+  cv::Mat src_gray;
+  cv::cvtColor(src_bgr, src_gray, cv::COLOR_BGR2GRAY);
+
+  /* ② 复用 CLAHE 实例（clip 3.0, 8×8） */
+  static cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, {8, 8});
 
   for (auto & armor : armors) {
-    // Warp perspective transform
-    cv::Point2f lights_vertices[4] = {
+    /* ---- 透视变换 ---- */
+    cv::Point2f src_quad[4] = {
       armor.left_light.bottom, armor.left_light.top, armor.right_light.top,
       armor.right_light.bottom};
 
-    const int top_light_y = (warp_height - light_length) / 2 - 1;
-    const int bottom_light_y = top_light_y + light_length;
-    const int warp_width = armor.type == ArmorType::SMALL ? small_armor_width : large_armor_width;
-    cv::Point2f target_vertices[4] = {
-      cv::Point(0, bottom_light_y),
-      cv::Point(0, top_light_y),
-      cv::Point(warp_width - 1, top_light_y),
-      cv::Point(warp_width - 1, bottom_light_y),
-    };
-    cv::Mat number_image;
-    auto rotation_matrix = cv::getPerspectiveTransform(lights_vertices, target_vertices);
-    cv::warpPerspective(src, number_image, rotation_matrix, cv::Size(warp_width, warp_height));
+    const int top_y = (K_WARP_H - K_LIGHT_LEN) / 2 - 1;
+    const int bottom_y = top_y + K_LIGHT_LEN;
+    const int warp_w = (armor.type == ArmorType::SMALL) ? K_SMALL_W : K_LARGE_W;
+    cv::Point2f dst_quad[4] = {
+      {0, bottom_y}, {0, top_y}, {warp_w - 1.0f, top_y}, {warp_w - 1.0f, bottom_y}};
 
-    // Get ROI
-    number_image =
-      number_image(cv::Rect(cv::Point((warp_width - roi_size.width) / 2, 0), roi_size));
+    cv::Mat warp_gray;
+    cv::warpPerspective(
+      src_gray, warp_gray, cv::getPerspectiveTransform(src_quad, dst_quad), {warp_w, K_WARP_H},
+      cv::INTER_LINEAR, cv::BORDER_REPLICATE);
 
-    // Binarize
-    cv::cvtColor(number_image, number_image, cv::COLOR_RGB2GRAY);
-    cv::threshold(number_image, number_image, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+    /* ---- 提取数字 ROI（20×28 中央区域） ---- */
+    warp_gray =
+      warp_gray(cv::Rect((warp_w - K_ROI_SIZE.width) / 2, 0, K_ROI_SIZE.width, K_ROI_SIZE.height));
 
-    armor.number_img = number_image;
+    /* ---- CLAHE + Otsu 二值化 ---- */
+    clahe->apply(warp_gray, warp_gray);
+    cv::threshold(warp_gray, warp_gray, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+
+    armor.number_img = warp_gray;  // 直接存灰度二值图
   }
 }
 
@@ -143,5 +145,50 @@ void NumberClassifier::classify(std::vector<Armor> & armors)
       }),
     armors.end());
 }
+
+/**
+ * @brief 对输入图像执行自适应直方图均衡化（CLAHE）。
+ *
+ * @param src           输入 BGR 或灰度图（CV_8UC1 / CV_8UC3）
+ * @param clip_limit    对比度限制因子，常用 2.0 ~ 4.0
+ * @param tile_size     每个网格的尺寸，常用 8×8 或 16×16
+ * @return              均衡化后的图像，类型与 src 相同
+ *
+ * 用法示例：
+ *   cv::Mat out = applyCLAHE(img, 3.0, {8, 8});
+ */
+cv::Mat NumberClassifier::applyCLAHE(const cv::Mat &src,
+                          double clip_limit,
+                          cv::Size tile_size)
+{
+    CV_Assert(!src.empty());
+    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(clip_limit, tile_size);
+
+    cv::Mat dst;
+
+    if (src.channels() == 1)               // 灰度图
+    {
+        clahe->apply(src, dst);
+    }
+    else if (src.channels() == 3)          // BGR 彩色图
+    {
+        cv::Mat lab, l_channel;
+        cv::cvtColor(src, lab, cv::COLOR_BGR2Lab);     // 转 Lab
+        std::vector<cv::Mat> lab_planes(3);
+        cv::split(lab, lab_planes);                    // 取 L 通道
+        clahe->apply(lab_planes[0], l_channel);
+        l_channel.copyTo(lab_planes[0]);
+        cv::merge(lab_planes, lab);
+        cv::cvtColor(lab, dst, cv::COLOR_Lab2BGR);     // 转回 BGR
+    }
+    else
+    {
+        CV_Error(cv::Error::StsUnsupportedFormat,
+                 "applyCLAHE() 支持 1 或 3 通道 8‑bit 图像");
+    }
+
+    return dst;
+}
+
 
 }  // namespace rm_auto_aim

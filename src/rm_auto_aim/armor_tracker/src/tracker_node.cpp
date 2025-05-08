@@ -153,12 +153,6 @@ void ArmorTrackerNode::initServices()
   using Req = Trigger::Request::SharedPtr;
   using Resp = Trigger::Response::SharedPtr;
 
-  reset_tracker_srv_ = create_service<Trigger>("/tracker/left/reset", [this](Req, Resp res) {
-    tracker_->tracker_state = Tracker::LOST;
-    res->success = true;
-    RCLCPP_INFO(get_logger(), "Tracker reset!");
-  });
-
   reset_tracker_srv_ =
     create_service<Trigger>("/tracker/reset", [this](Req, Resp res) {
       tracker_->tracker_state = Tracker::LOST;
@@ -191,7 +185,7 @@ void ArmorTrackerNode::initTf()
 void ArmorTrackerNode::initSubscribers()
 {
   armors_sub_.subscribe(
-    this, "/detector/left/armors", rmw_qos_profile_sensor_data);
+    this, "/detector/armors", rmw_qos_profile_sensor_data);
 
   tf2_filter_ = std::make_shared<tf2_filter>(
     armors_sub_, *tf2_buffer_, target_frame_, 10, get_node_logging_interface(),
@@ -205,10 +199,10 @@ void ArmorTrackerNode::initSubscribers()
 void ArmorTrackerNode::initPublishers()
 {
   info_pub_ =
-    create_publisher<auto_aim_interfaces::msg::TrackerInfo>("/tracker/left/info", 10);
+    create_publisher<auto_aim_interfaces::msg::TrackerInfo>("/tracker/info", 10);
 
   target_pub_ = create_publisher<auto_aim_interfaces::msg::Target>(
-    "/tracker/left/target", rclcpp::SensorDataQoS());
+    "/tracker/target", rclcpp::SensorDataQoS());
 }
 
 void ArmorTrackerNode::initMarkers()

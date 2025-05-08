@@ -39,7 +39,7 @@ public:
   explicit ArmorTrackerNode(const rclcpp::NodeOptions & options);
 
 private:
-  /* === 拆分出的初始化函数 === */
+  /* === 初始化函数 === */
   void declareParameters();
   void initTrackers();
   void initEkf();

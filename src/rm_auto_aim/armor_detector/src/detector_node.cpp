@@ -35,6 +35,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
 
   // Detector
   detector_ = initDetector();
+  debug_ = declare_parameter<bool>("debug", true);
   RCLCPP_INFO(get_logger(), "Detector initialized.");
 
   // Armors Publisher

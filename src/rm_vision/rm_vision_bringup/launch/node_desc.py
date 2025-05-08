@@ -20,12 +20,12 @@ node_params = os.path.join(
 
 cfg = yaml.safe_load(open(launch_params_path, 'r'))
 
-xyz = cfg['gimbal_link_to_camera_link']['xyz']    # "0.07 -0.012 -0.011"
-rpy = cfg['gimbal_link_to_camera_link']['rpy']    # "0 0 0"
+xyz = cfg['odom2camera']['xyz']    # "0.07 -0.012 -0.011"
+rpy = cfg['odom2camera']['rpy']    # "0 0 0"
 
 # ---------- 2. xacro → robot_description ----------
 xacro_file = os.path.join(
-    gpsd('sentry'), 'urdf', 'rm_gimbal.urdf.xacro')
+    gpsd('rm_gimbal_description'), 'urdf', 'rm_gimbal.urdf.xacro')
 
 robot_description = Command([
     'xacro ' + xacro_file +
@@ -43,7 +43,7 @@ rsp_component = ComposableNode(
     }]
 )
 
-camera_node = ComposableNode(
+camera = ComposableNode(
     package='camera_core',
     plugin='camera::CameraCore',
     name='camera_core',
