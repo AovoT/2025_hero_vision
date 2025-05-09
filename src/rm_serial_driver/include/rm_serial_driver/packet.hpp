@@ -29,6 +29,8 @@ struct ReceiveImuData
 
   struct
   {
+    uint8_t self_color;
+    uint8_t vision_open;
     float yaw;    // rad
     float pitch;  // rad
     float roll;   // rad

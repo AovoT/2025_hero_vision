@@ -50,9 +50,6 @@ void NumberClassifier::extractNumbers(const cv::Mat & src_bgr, std::vector<Armor
   cv::Mat src_gray;
   cv::cvtColor(src_bgr, src_gray, cv::COLOR_BGR2GRAY);
 
-  /* ② 复用 CLAHE 实例（clip 3.0, 8×8） */
-  static cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, {8, 8});
-
   for (auto & armor : armors) {
     /* ---- 透视变换 ---- */
     cv::Point2f src_quad[4] = {
@@ -75,7 +72,6 @@ void NumberClassifier::extractNumbers(const cv::Mat & src_bgr, std::vector<Armor
       warp_gray(cv::Rect((warp_w - K_ROI_SIZE.width) / 2, 0, K_ROI_SIZE.width, K_ROI_SIZE.height));
 
     /* ---- CLAHE + Otsu 二值化 ---- */
-    clahe->apply(warp_gray, warp_gray);
     cv::threshold(warp_gray, warp_gray, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
 
     armor.number_img = warp_gray;  // 直接存灰度二值图
@@ -145,50 +141,5 @@ void NumberClassifier::classify(std::vector<Armor> & armors)
       }),
     armors.end());
 }
-
-/**
- * @brief 对输入图像执行自适应直方图均衡化（CLAHE）。
- *
- * @param src           输入 BGR 或灰度图（CV_8UC1 / CV_8UC3）
- * @param clip_limit    对比度限制因子，常用 2.0 ~ 4.0
- * @param tile_size     每个网格的尺寸，常用 8×8 或 16×16
- * @return              均衡化后的图像，类型与 src 相同
- *
- * 用法示例：
- *   cv::Mat out = applyCLAHE(img, 3.0, {8, 8});
- */
-cv::Mat NumberClassifier::applyCLAHE(const cv::Mat &src,
-                          double clip_limit,
-                          cv::Size tile_size)
-{
-    CV_Assert(!src.empty());
-    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(clip_limit, tile_size);
-
-    cv::Mat dst;
-
-    if (src.channels() == 1)               // 灰度图
-    {
-        clahe->apply(src, dst);
-    }
-    else if (src.channels() == 3)          // BGR 彩色图
-    {
-        cv::Mat lab, l_channel;
-        cv::cvtColor(src, lab, cv::COLOR_BGR2Lab);     // 转 Lab
-        std::vector<cv::Mat> lab_planes(3);
-        cv::split(lab, lab_planes);                    // 取 L 通道
-        clahe->apply(lab_planes[0], l_channel);
-        l_channel.copyTo(lab_planes[0]);
-        cv::merge(lab_planes, lab);
-        cv::cvtColor(lab, dst, cv::COLOR_Lab2BGR);     // 转回 BGR
-    }
-    else
-    {
-        CV_Error(cv::Error::StsUnsupportedFormat,
-                 "applyCLAHE() 支持 1 或 3 通道 8‑bit 图像");
-    }
-
-    return dst;
-}
-
 
 }  // namespace rm_auto_aim

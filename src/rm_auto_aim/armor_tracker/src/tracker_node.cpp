@@ -42,8 +42,7 @@ void ArmorTrackerNode::declareParameters()
   r_yaw = declare_parameter("ekf.r_yaw", 0.02);
 
   //  左右 gimbal 目标坐标系
-  target_frame_ = declare_parameter("left.target_frame", "gimbal_left_link_offset");
-  target_frame_ = declare_parameter("right.target_frame", "gimbal_right_link_offset");
+  target_frame_ = declare_parameter("target_frame", "odom");
 }
 
 void ArmorTrackerNode::initTrackers()

@@ -43,14 +43,6 @@ rsp_component = ComposableNode(
     }]
 )
 
-camera = ComposableNode(
-    package='camera_core',
-    plugin='camera::CameraCore',
-    name='camera_core',
-    parameters=[node_params],
-    extra_arguments=[{'use_intra_process_comms': True}],
-)
-
 # ArmorDetectorNode
 detector_node = ComposableNode(
     package='armor_detector',

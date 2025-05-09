@@ -87,14 +87,15 @@ bool unpack(const uint8_t * raw, size_t len, Packet & pkt)
   auto * hdr = reinterpret_cast<const HeaderFrame *>(raw);
 
   /* 1) CRC8 检查三字节帧头 */
-  if (crc8::get_CRC8_check_sum(raw, 3, 0xFF) != hdr->crc) return false;
+  // if (crc8::get_CRC8_check_sum(raw, 3, 0xFF) != hdr->crc) return false;
+  if (crc8::verify_CRC8_check_sum(raw, 3)) return false;
 
   /* 2) 根据 hdr->len 计算完整包长 */
   const size_t frame_len = sizeof(HeaderFrame) + hdr->len + 2;
   if (len < frame_len) return false;  // 数据还没收全
 
   /* 3) CRC16 检查 */
-  if (!crc16::verify_CRC16_check_sum(raw, frame_len)) return false;  // 假设库有该重载
+  if (!crc16::verify_CRC16_check_sum(raw, frame_len)) return false; 
 
   /* 4) 拷贝解析 */
   std::memcpy(&pkt, raw, std::min(frame_len, sizeof(Packet)));
@@ -129,7 +130,7 @@ public:
       if (buf_.size() < sizeof(HeaderFrame)) break;
       if (buf_.front() != 0x5A) {
         buf_.pop_front();
-        RCLCPP_INFO(logger_, "unexpected sof, drop one byte");
+        RCLCPP_WARN(logger_, "unexpected sof, drop one byte");
         continue;
       }
 

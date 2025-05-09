@@ -209,8 +209,9 @@ void RMSerialDriver::receiveLoop()
 
 void RMSerialDriver::handlePacket(const ReceiveImuData & pkt)
 {
+  auto d = pkt.data;
   tf2::Quaternion q;
-  q.setRPY(pkt.data.roll, pkt.data.pitch, pkt.data.yaw);
+  q.setRPY(d.roll, d.pitch, d.yaw);
   q.normalize();
   if (
     std::isnan(q.x()) || std::isnan(q.y()) || std::isnan(q.z()) ||
@@ -224,19 +225,31 @@ void RMSerialDriver::handlePacket(const ReceiveImuData & pkt)
   t.child_frame_id = "gimbal_link";
   t.transform.rotation = tf2::toMsg(q);
   pubs_.tf_broadcaster.sendTransform(t);
+
+  static std::atomic<uint8_t> aiming_color = UNKNOWN;
+  uint8_t detect_color = d.self_color == RED ? BLUE : RED;
+  if (detect_color != RED && detect_color != BLUE) [[unlikely]] {
+    RCLCPP_ERROR(
+      get_logger(),
+      "invalid color value: %d, expected color value is 0 - RED, 1 - BLUE",
+      detect_color);
+    return;
+  }
+  if (detect_color != aiming_color || aiming_color == UNKNOWN) [[unlikely]] {
+    clis_.setParam(rclcpp::Parameter("detect_color", detect_color));
+    aiming_color.store(detect_color);
+  }
 }
 
 void RMSerialDriver::handleMsg(
   auto_aim_interfaces::msg::Target::SharedPtr msg)
 {
-  std::map<std::string, int> name_to_id = {
+  static std::map<std::string, int> name_to_id = {
     {"", 0},  {"1", 1},       {"2", 2},     {"3", 3},    {"4", 4},
     {"5", 5}, {"outpost", 6}, {"guard", 7}, {"base", 8},
   };
 
-  bool is_valid = msg->header.frame_id == "gimbal_left_link_offset" ||
-                  msg->header.frame_id == "gimbal_right_link_offset" ||
-                  msg->header.frame_id == "odom";
+  bool is_valid = msg->header.frame_id == "odom";
   if (!is_valid) {
     RCLCPP_WARN(
       get_logger(), "invalid target frame id : %s",
@@ -245,14 +258,11 @@ void RMSerialDriver::handleMsg(
   }
 
   // ========== 准备共用的基础数据 ==========
-  SendVisionData base_pkt{};
-  base_pkt.frame_header.sof = 0x5A;
-  base_pkt.frame_header.id = 0x03;
-  base_pkt.time_stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now().time_since_epoch())
-                          .count();
+  SendVisionData pkt{};
+  pkt.frame_header.sof = 0x5A;
+  pkt.frame_header.id = 0x03;
 
-  auto & d = base_pkt.data;
+  auto & d = pkt.data;
   d.tracking = msg->tracking;
   d.armors_num = msg->armors_num;
   d.id = name_to_id[msg->id];
@@ -268,13 +278,15 @@ void RMSerialDriver::handleMsg(
   d.r2 = msg->radius_2;
   d.dz = msg->dz;
 
-  geometry_msgs::msg::PointStamped pt_out;
+  pkt.time_stamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now().time_since_epoch())
+                          .count();
 
-  auto buf = pack(base_pkt);
+  auto buf = pack(pkt);
   if (params_.debug) {
     RCLCPP_INFO(
       get_logger(), "Port debug info");
-    print(base_pkt);
+    print(pkt);
   }
 
   if (static_cast<ssize_t>(port_->write(buf.data(), buf.size())) < 0) {

@@ -1,26 +1,24 @@
-/camera_core:
+/rm_serial_driver:
   ros__parameters:
-    camera:
-      name: "camera"
-      cam_info_url: "package://camera_core/config/right_cam_info.yaml"
-      exposure_time: 10000.0 # ms
-      gain: 5.0
-      invert: false
-      trigger_mode: false
-      rotate: 270
-
-/serial_driver:
-  ros__parameters:
-    timestamp_offset: 0.006
+    debug: false
     device_name: /dev/ttyACM0
     baud_rate: 115200
-    flow_control: none
-    parity: none
-    stop_bits: "1"
+    hardware_flow: false
+    parity: false
+    stop_bits: 1
+    timeout_ms: 1000
 
 /armor_detector:
   ros__parameters:
-    debug: true
+    debug: false
+    camera:
+      name: "camera"
+      cam_info_url: "package://rm_vision_bringup/config/camera_info.yaml"
+      exposure_time: 4000 # ms
+      gain: 5.0
+      invert: false
+      trigger_mode: false
+      rotate: 0
 
     detect_color: 1
     binary_thres: 93
@@ -33,6 +31,7 @@
 
 /armor_tracker:
   ros__parameters:
+    debug: false
     target_frame: "odom"
     max_armor_distance: 10.0
 
