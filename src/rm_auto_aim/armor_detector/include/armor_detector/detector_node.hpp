@@ -62,7 +62,7 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 
   // Camera
-  std::unique_ptr<hikcamera::ImageCapturer> img_capture_;
+  std::unique_ptr<hikcamera::ImageCapturer> img_capturer_;
   camera::HikCameraParams hik_camera_params_;
   // Detector & PnP
   std::unique_ptr<Detector> detector_;

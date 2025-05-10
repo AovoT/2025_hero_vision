@@ -27,8 +27,8 @@ struct HikCameraParams
     cam_info_url = node->declare_parameter(
       "camera.cam_info_url", "package://rm_vision_bringup/config/camera_info.yaml", desc);
 
-    int exp_us = node->declare_parameter<int>("camera.exposure_time", 2200, desc);
-    camera_profile.exposure_time = std::chrono::duration<float, std::micro>(exp_us);
+    int exp_ms = node->declare_parameter<int>("camera.exposure_time", 4, desc);
+    camera_profile.exposure_time = std::chrono::duration<float, std::micro>(exp_ms);
     camera_profile.gain = node->declare_parameter("camera.gain", 8.0f, desc);
     camera_profile.invert_image = node->declare_parameter("camera.invert", false, desc);
     camera_profile.trigger_mode = node->declare_parameter("camera.trigger_mode", false, desc);

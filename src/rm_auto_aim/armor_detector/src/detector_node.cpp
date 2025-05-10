@@ -24,7 +24,7 @@ ArmorDetectorNode::ArmorDetectorNode(const rclcpp::NodeOptions & options)
 : Node("armor_detector", options), hik_camera_params_(this), cam_info_manager_(this)
 {
   RCLCPP_INFO(get_logger(), "Starting ArmorDetectorNode...");
-  img_capture_ = std::make_unique<hikcamera::ImageCapturer>(
+  img_capturer_ = std::make_unique<hikcamera::ImageCapturer>(
     hik_camera_params_.camera_profile, hik_camera_params_.camera_name.c_str());
   RCLCPP_INFO(get_logger(), "Camera initialized.");
 
@@ -81,12 +81,18 @@ void ArmorDetectorNode::detectLoop()
 
 void ArmorDetectorNode::captureLoop()
 {
+  cv::Mat raw_img;
   while (rclcpp::ok()) {
-    if (!img_capture_) [[unlikely]] {
+    if (!img_capturer_) [[unlikely]] {
       RCLCPP_ERROR(get_logger(), "img_capture_ is null!");
       return;
     }
-    cv::Mat raw_img = img_capture_->read();
+    try {
+      raw_img = img_capturer_->read(std::chrono::duration<unsigned int, std::milli>(1000));
+    } catch (...) {
+      RCLCPP_WARN(get_logger(), "img read time out !");
+      continue;
+    }
     if (raw_img.empty()) [[unlikely]] {
       RCLCPP_WARN(get_logger(), "Captured empty image");
       return;
@@ -302,7 +308,7 @@ rcl_interfaces::msg::SetParametersResult ArmorDetectorNode::onParametersSet(
       changed = true;
     }
     if (changed) {
-      img_capture_->update_profile(new_profile);
+      img_capturer_->update_profile(new_profile);
       RCLCPP_INFO(get_logger(), "Updated camera profile dynamically.");
     }
   }

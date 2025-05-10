@@ -14,8 +14,8 @@
     camera:
       name: "camera"
       cam_info_url: "package://rm_vision_bringup/config/camera_info.yaml"
-      exposure_time: 4000 # ms
-      gain: 5.0
+      exposure_time: 5000 # ms
+      gain: 13.0
       invert: false
       trigger_mode: false
       rotate: 0
